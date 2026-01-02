@@ -1,5 +1,23 @@
 # saskquat
-A CLI tool for looking at a domain, generating typosquatting options, and verifying if they exist against DNS
+A CLI tool for looking at a domain, generating typosquatting options, and verifying if they exist against DNS.
+
+## Usage
+Generate candidates for example.com, verify via DNS + TLS, output JSON lines:
+`go run . -domain example.com -tlds com,net,org,co -tls=true -http=false -outfile results.json`
+Include HTTP HEAD (useful to see redirect-to-login behavior), don’t follow redirects:
+`go run . -domain example.com -tlds com,co,io -http=true -follow=false > results.json`
+
+## Practical triage guidance (what to look for in results)
+In the emitted JSON lines, prioritize domains that have:
+
+- `has_mail: true` (MX records are common for phishing and BEC-like setups)
+- TLS SANs containing your brand or exact target hostname patterns
+- HTTP status `301/302` to a suspicious path (e.g., `/login`, `/auth`, `/microsoftonline`, etc.)
+- Hosting clusters (you can extend by adding ASN/IP reputation enrichment)
+
+## TODO
+- Look for and index disparity across major DNS providers
+- Also look for dangling DNS records ripe for domain and subdomain takeover
 
 ## Command-Line Flags
 
