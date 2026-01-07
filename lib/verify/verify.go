@@ -18,7 +18,7 @@ import (
 	"golang.org/x/net/idna"
 )
 
-type VerifyConfig struct {
+type Config struct {
 	DNSTimeout          time.Duration
 	HTTPTimeout         time.Duration
 	TLSTimeout          time.Duration
@@ -52,6 +52,9 @@ type TLSResult struct {
 	DNSNames     []string
 	CommonName   string
 	SerialNumber string
+	// TODO: HasRedirect 	bool
+	// TODO: RedirectChain	[]string
+	// TODO: Remediated 	bool
 }
 
 type HTTPResult struct {
@@ -61,6 +64,9 @@ type HTTPResult struct {
 	StatusCode int
 	Location   string
 	Server     string
+	// TODO: HasRedirect 	bool
+	// TODO: RedirectChain	[]string
+	// TODO: Remediated 	bool
 }
 
 type Verification struct {
@@ -69,11 +75,11 @@ type Verification struct {
 	DNS        DNSResult
 	TLS        *TLSResult
 	HTTP       *HTTPResult
-	Resolvable bool
+	Resolvable bool // TODO: double check it works to mark true is one or other is true https||http
 	HasMail    bool
 }
 
-func VerifyDomain(ctx context.Context, domain string, cfg VerifyConfig) (Verification, error) {
+func VerifyDomain(ctx context.Context, domain string, cfg Config) (Verification, error) {
 	if cfg.DNSTimeout <= 0 {
 		cfg.DNSTimeout = 2 * time.Second
 	}
@@ -236,7 +242,7 @@ func fetchTLS(ctx context.Context, domain string) TLSResult {
 	return res
 }
 
-func fetchHTTP(ctx context.Context, domain string, cfg VerifyConfig) HTTPResult {
+func fetchHTTP(ctx context.Context, domain string, cfg Config) HTTPResult {
 	res := HTTPResult{Attempted: true}
 	target := "https://" + domain + "/"
 	res.URL = target
@@ -287,4 +293,6 @@ func fetchHTTP(ctx context.Context, domain string, cfg VerifyConfig) HTTPResult 
 }
 
 // Optional helper for stronger TLS parsing later.
-func parseLeafCert(_ *x509.Certificate) {}
+func parseLeafCert(_ *x509.Certificate) {
+	// TODO: inspect if these leaf certs somehow match the base domain OU or something
+}
