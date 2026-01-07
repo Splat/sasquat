@@ -37,7 +37,7 @@ func main() {
 		follow     = flag.Bool("follow", false, "Follow HTTP redirects")
 		maxDomains = flag.Int("max", 0, "Optional(testing) cap on number of candidates processed (0 = no cap)")
 		logLevel   = flag.String("log-level", "info", "debug|info|warn|error")
-		outfile    = flag.String("outfile", "results.json", "Output file to write results into")
+		outfile    = flag.String("outfile", "site/data/results.json", "Output file to write results into. Default is 'site/data/results.json' for website")
 	)
 	flag.Parse()
 
@@ -152,6 +152,14 @@ func main() {
 
 	if err := encoder.Encode(allData); err != nil {
 		log.Fatal(err)
+	}
+
+	// TODO: IF outfile == "site/data/results.json" launch site/home.html
+	if *outfile == "site/data/results.json" {
+		// Launch site/home.html
+	} else {
+		// either write to console or try to pass path in as a parameter
+		// change the site to accept a query parameter for file to load
 	}
 }
 
