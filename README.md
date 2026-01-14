@@ -148,3 +148,13 @@ Results are written directly to this file rather than relying on stdout redirect
   -log-level info \
   -outfile results.json
 ```
+### Developer Usage
+Running the tests with HTML coverage report
+```bash
+go test -coverpkg=./... -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+```
+Running the tests with minimal coverage output
+`go test -cover ./...`
+Just run the tests
+`go test ./...`
