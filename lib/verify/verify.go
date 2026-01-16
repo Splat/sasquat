@@ -7,12 +7,8 @@ package verify
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"fmt"
-	"net"
-	"net/http"
 	"strings"
 	"time"
 
@@ -27,45 +23,6 @@ type Config struct {
 	DoHTTP              bool
 	HTTPFollowRedirects bool
 	UserAgent           string
-}
-
-type DNSResult struct {
-	HasA     bool
-	HasAAAA  bool
-	HasCNAME bool
-	HasMX    bool
-	HasNS    bool
-
-	A     []string
-	AAAA  []string
-	CNAME string
-	MX    []string
-	NS    []string
-}
-
-type TLSResult struct {
-	Connected    bool
-	ServerName   string
-	Issuer       string
-	Subject      string
-	NotBefore    time.Time
-	NotAfter     time.Time
-	DNSNames     []string
-	CommonName   string
-	SerialNumber string
-}
-
-type HTTPResult struct {
-	Attempted     bool
-	URL           string
-	Status        string
-	StatusCode    int
-	Location      string
-	Server        string
-	RedirectChain []string
-	// TODO: For fast lookup downstream
-	// TODO: HasRedirect 	bool
-	// TODO: Remediated 	bool // validate last redirect == Verification.Domain
 }
 
 type Verification struct {
@@ -89,7 +46,7 @@ func VerifyDomain(ctx context.Context, domain string, cfg Config) (Verification,
 		cfg.TLSTimeout = 3 * time.Second
 	}
 	if cfg.UserAgent == "" {
-		cfg.UserAgent = "typosquat-verifier/1.0"
+		cfg.UserAgent = "sasquat-verifier/1.0"
 	}
 
 	ascii, err := toASCII(domain)
@@ -143,184 +100,12 @@ func toASCII(domain string) (string, error) {
 	return idna.Lookup.ToASCII(domain)
 }
 
-func lookupDNS(ctx context.Context, domain string) (DNSResult, error) {
-	var r DNSResult
-
-	resolver := net.DefaultResolver
-
-	// A / AAAA
-	ips, err := resolver.LookupIPAddr(ctx, domain)
-	if err == nil {
-		for _, ip := range ips {
-			if ip.IP.To4() != nil {
-				r.HasA = true
-				r.A = append(r.A, ip.IP.String())
-			} else if ip.IP.To16() != nil {
-				r.HasAAAA = true
-				r.AAAA = append(r.AAAA, ip.IP.String())
-			}
-		}
-	}
-
-	// CNAME
-	cname, errC := resolver.LookupCNAME(ctx, domain)
-	if errC == nil && cname != "" && !strings.EqualFold(strings.TrimSuffix(cname, "."), domain) {
-		r.HasCNAME = true
-		r.CNAME = strings.TrimSuffix(cname, ".")
-	}
-
-	// MX
-	mxs, errMX := resolver.LookupMX(ctx, domain)
-	if errMX == nil && len(mxs) > 0 {
-		r.HasMX = true
-		for _, mx := range mxs {
-			r.MX = append(r.MX, strings.TrimSuffix(mx.Host, "."))
-		}
-	}
-
-	// NS
-	nss, errNS := resolver.LookupNS(ctx, domain)
-	if errNS == nil && len(nss) > 0 {
-		r.HasNS = true
-		for _, ns := range nss {
-			r.NS = append(r.NS, strings.TrimSuffix(ns.Host, "."))
-		}
-	}
-
-	// Return whichever error is most meaningful;
-	// DNS can fail per-record while others succeed.
-	// If nothing was found and all lookups failed, return a generic error.
-	if !r.HasA && !r.HasAAAA && !r.HasCNAME && !r.HasMX && !r.HasNS {
-		if err != nil {
-			return r, err
-		}
-		if errC != nil {
-			return r, errC
-		}
-		if errMX != nil {
-			return r, errMX
-		}
-		if errNS != nil {
-			return r, errNS
-		}
-	}
-
-	return r, nil
-}
-
-func fetchTLS(ctx context.Context, domain string) TLSResult {
-	res := TLSResult{ServerName: domain}
-
-	dialer := &net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(domain, "443"))
-	if err != nil {
-		return res
-	}
-	defer conn.Close()
-
-	tlsConn := tls.Client(conn, &tls.Config{
-		ServerName:         domain, // SNI
-		InsecureSkipVerify: true,   // We want metadata even for bad certs; do not use for trust decisions.
-	})
-	_ = tlsConn.SetDeadline(time.Now().Add(3 * time.Second))
-	if err := tlsConn.Handshake(); err != nil {
-		return res
-	}
-	state := tlsConn.ConnectionState()
-	res.Connected = true
-
-	if len(state.PeerCertificates) > 0 {
-		cert := state.PeerCertificates[0]
-		res.Issuer = cert.Issuer.String()
-		res.Subject = cert.Subject.String()
-		res.NotBefore = cert.NotBefore
-		res.NotAfter = cert.NotAfter
-		res.DNSNames = append([]string{}, cert.DNSNames...)
-		res.CommonName = cert.Subject.CommonName
-		res.SerialNumber = cert.SerialNumber.String()
-	}
-	return res
-}
-
-// fetchHTTP executes the provided domain and returns the HTTPResult
-// The last item in the HTTPResult.RedirectChain array is the final landing spot.
-func fetchHTTP(ctx context.Context, https bool, domain string, cfg Config) HTTPResult {
-	res := configureResult(https, domain)
-	client := configureClient(cfg, res)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, res.URL, nil)
-	if err != nil {
-		return res
-	}
-	req.Header.Set("User-Agent", cfg.UserAgent)
-
-	// TODO: Factor this out to a processHTTP method to compliment this fetchHTTP for unit testing
-	resp, err := client.Do(req)
-	if err != nil {
-		// If HTTPS fails, try HTTP as a fallback.
-		// TODO: recall fetchHTTP without HTTPS to reduce code
-		res.URL = getTargetDomain(false, domain)
-		req2, err2 := http.NewRequestWithContext(ctx, http.MethodHead, res.URL, nil)
-		if err2 != nil {
-			return res
-		}
-		req2.Header.Set("User-Agent", cfg.UserAgent)
-		resp2, err2 := client.Do(req2)
-		if err2 != nil {
-			return res
-		}
-		defer resp2.Body.Close()
-		res.Status = resp2.Status
-		res.StatusCode = resp2.StatusCode
-		res.Location = resp2.Header.Get("Location")
-		res.Server = resp2.Header.Get("Server")
-		return res
-	}
-
-	res.Status = resp.Status
-	res.StatusCode = resp.StatusCode
-	res.Location = resp.Header.Get("Location")
-	res.Server = resp.Header.Get("Server")
-	return res
-}
-
 func getTargetDomain(https bool, domain string) string {
 	if https {
 		return "https://" + domain + "/"
 	} else {
 		return "http://" + domain + "/"
 	}
-}
-
-// configureResult initializes an HTTPResult struct with attempted flag set to true and an empty RedirectChain.
-// The URL field is set to the target domain after extracting it from the provided domain string.
-func configureResult(https bool, domain string) HTTPResult {
-	res := HTTPResult{Attempted: true, RedirectChain: []string{}}
-	target := getTargetDomain(https, domain)
-	res.URL = target
-
-	return res
-}
-
-func configureClient(cfg Config, result HTTPResult) http.Client {
-	client := &http.Client{
-		Timeout: cfg.HTTPTimeout,
-	}
-
-	if !cfg.HTTPFollowRedirects { // don't follow the redirects and short circuit
-		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	} else { // follow redirects to a maximum of 10 (might change in the future)
-		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return fmt.Errorf("stopped after 10 redirects")
-			}
-			result.RedirectChain = append(result.RedirectChain, req.URL.String())
-			return nil
-		}
-	}
-	return *client
 }
 
 // TODO: fetchHTTP runs req (request) twice and this should be factored out here
