@@ -108,20 +108,6 @@ func getTargetDomain(https bool, domain string) string {
 	}
 }
 
-// TODO: fetchHTTP runs req (request) twice and this should be factored out here
-func runRequest() {
-
-}
-
-func processRequest() {
-
-}
-
-// TODO: Factor this out to a processHTTP method to compliment this fetchHTTP for unit testing
-func processResults() {
-
-}
-
 // TODO: Optional helper for stronger TLS parsing later.
 func parseLeafCert(_ *x509.Certificate) {
 	// TODO: inspect if these leaf certs somehow match the base domain OU or something
