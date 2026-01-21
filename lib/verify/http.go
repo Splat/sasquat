@@ -14,16 +14,17 @@ type HTTPResult struct {
 	Location      string
 	Server        string
 	RedirectChain []string
+	HasRedirect   bool
 	// TODO: For fast lookup downstream
-	// TODO: HasRedirect 	bool
 	// TODO: Remediated 	bool // validate last redirect == Verification.Domain
 }
 
-// generateHTTPResult initializes an HTTPResult struct with attempted flag set to true and an empty RedirectChain.
-// The URL field is set to the target domain after extracting it from the provided domain string.
-// should probably be an init method on the HTTPResult type
+// generateHTTPResult initializes an HTTPResult struct with attempted
+// flag set to true and an empty RedirectChain. The URL field is set
+// to the target domain after extracting it from the provided domain
+// string. TODO: Should probably be an init method on the HTTPResult type
 func generateHTTPResult(https bool, domain string) HTTPResult {
-	res := HTTPResult{Attempted: true, RedirectChain: []string{}}
+	res := HTTPResult{Attempted: true, RedirectChain: []string{}, HasRedirect: false}
 	target := getTargetDomain(https, domain)
 	res.URL = target
 
@@ -90,5 +91,10 @@ func fetchHTTP(ctx context.Context, https bool, domain string, cfg Config) HTTPR
 	res.StatusCode = resp.StatusCode
 	res.Location = resp.Header.Get("Location")
 	res.Server = resp.Header.Get("Server")
+
+	if len(res.RedirectChain) > 0 {
+		res.HasRedirect = true
+	}
+
 	return res
 }
