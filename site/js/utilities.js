@@ -39,67 +39,6 @@ function registrableHint(domain){
     return parts.slice(-2).join(".");
 }
 
-function levenshtein(a,b){
-    a = a||""; b = b||"";
-    const n=a.length, m=b.length;
-    const dp = Array.from({length:n+1}, ()=>Array(m+1).fill(0));
-    for(let i=0;i<=n;i++) dp[i][0]=i;
-    for(let j=0;j<=m;j++) dp[0][j]=j;
-    for(let i=1;i<=n;i++){
-        for(let j=1;j<=m;j++){
-            const cost = a[i-1]===b[j-1]?0:1;
-            dp[i][j] = Math.min(
-                dp[i-1][j]+1,
-                dp[i][j-1]+1,
-                dp[i-1][j-1]+cost
-            );
-            // transposition (Damerau-lite)
-            if(i>1 && j>1 && a[i-1]===b[j-2] && a[i-2]===b[j-1]){
-                dp[i][j] = Math.min(dp[i][j], dp[i-2][j-2]+1);
-            }
-        }
-    }
-    return dp[n][m];
-}
-
-function classifyVariant(baseDomain, candidateDomain){
-    const base = parseDomainParts(baseDomain||"");
-    const cand = parseDomainParts(candidateDomain||"");
-    if(!baseDomain) return {variantClass:"unknown", editDistance:null, tld:cand.tld, tldOnly:false};
-
-    // Compare SLDs only; treat TLD-only separately
-    const baseSLD = base.sld;
-    const candSLD = cand.sld;
-    const tldOnly = (baseSLD === candSLD) && (base.tld !== cand.tld);
-    const dist = levenshtein(baseSLD, candSLD);
-
-    if(tldOnly) return {variantClass:"tld", editDistance:0, tld:cand.tld, tldOnly:true};
-
-    // quick classifiers for single-edit categories
-    if(dist === 1){
-        if(baseSLD.length + 1 === candSLD.length) return {variantClass:"insert", editDistance:1, tld:cand.tld, tldOnly:false};
-        if(baseSLD.length - 1 === candSLD.length) return {variantClass:"delete", editDistance:1, tld:cand.tld, tldOnly:false};
-        if(baseSLD.length === candSLD.length) return {variantClass:"substitute", editDistance:1, tld:cand.tld, tldOnly:false};
-    }
-
-    // transpose check: distance 1 with same length often captures adjacent transpositions already, but be explicit
-    if(baseSLD.length === candSLD.length){
-        let diffs = [];
-        for(let i=0;i<baseSLD.length;i++){
-            if(baseSLD[i] !== candSLD[i]) diffs.push(i);
-            if(diffs.length>2) break;
-        }
-        if(diffs.length===2){
-            const [i,j]=diffs;
-            if(j===i+1 && baseSLD[i]===candSLD[j] && baseSLD[j]===candSLD[i]){
-                return {variantClass:"transpose", editDistance:dist, tld:cand.tld, tldOnly:false};
-            }
-        }
-    }
-
-    return {variantClass: dist<=2 ? "other" : "other", editDistance:dist, tld:cand.tld, tldOnly:false};
-}
-
 function scoreRecord(r, cfg){
     const sinkholes = cfg.sinkholes;
     const indicators = cfg.indicators;

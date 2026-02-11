@@ -51,17 +51,15 @@ function normalizeRecord(r){
         .concat(dns.AAAA||[])
         .filter(Boolean);
 
-    const v = classifyVariant(CFG.baseDomain, d); // TODO: this doens't seem to do anything
+    const cand = parseDomainParts(d);
     const scored = scoreRecord(r, CFG);
 
     return {
         _raw:r,
         domain:d,
         resolvable: !!r.resolvable,
-        variantClass: v.variantClass,
-        tld: v.tld || "",
-        editDistance: v.editDistance,
-        tldOnly: v.tldOnly,
+        variantClass: r.strategy || "unknown",
+        tld: cand.tld || "",
         score: scored.score,
         tags: scored.tags,
         ips: ips.join(" "),
@@ -126,7 +124,7 @@ function sortView(){
 
     VIEW.sort((a,b)=>{
         let av = a[k], bv = b[k];
-        if(k==="score" || k==="httpStatusCode" || k==="editDistance"){
+        if(k==="score" || k==="httpStatusCode"){
             av = Number(av||0); bv = Number(bv||0);
             return (av-bv)*mul;
         }
@@ -158,7 +156,7 @@ function render(){
         tr.appendChild(dom);
 
         const vc = document.createElement("td");
-        vc.innerHTML = `<span class="pill"><strong>${r.variantClass}</strong>${r.editDistance!==null?`<span class="mono">d=${r.editDistance}</span>`:""}</span>`;
+        vc.innerHTML = `<span class="pill"><strong>${r.variantClass}</strong></span>`;
         tr.appendChild(vc);
 
         const tld = document.createElement("td");
@@ -208,6 +206,13 @@ function render(){
 
         tb.appendChild(tr);
     }
+
+    // update variant dropdown
+    const variants = Array.from(new Set(RAW.map(r=>r.variantClass).filter(Boolean))).sort();
+    const vSel = $("variantFilter");
+    const vCurrent = vSel.value;
+    vSel.innerHTML = '<option value="">All</option>' + variants.map(v=>`<option value="${v}">${v}</option>`).join("");
+    vSel.value = variants.includes(vCurrent) ? vCurrent : "";
 
     // update TLD dropdown
     const tlds = Array.from(new Set(RAW.map(r=>r.tld).filter(Boolean))).sort();
@@ -371,7 +376,7 @@ function fingerprintIndicators(r){
     }
 
     // Sinkhole IP indicator
-    const sinkholes = parseList($("sinkholeIps").value);
+    const sinkholes = splitAny($("sinkholeIps").value);
     if(sinkholes.length && r.ips){
         const hit = sinkholes.find(ip => (" "+r.ips+" ").includes(ip));
         if(hit) out.push(`<span class="pill"><strong style="color:var(--warn)">sinkhole-hit</strong></span> Matches sinkhole IP: <span class="mono">${escapeHtml(hit)}</span>.`);
@@ -380,7 +385,7 @@ function fingerprintIndicators(r){
     // TLS issuer familiarity / entropy heuristic (only if issuer present)
     const issuer = safe(r.tlsIssuer);
     if(issuer){
-        const known = parseList($("knownIssuers").value).some(k => issuer.toLowerCase().includes(k.toLowerCase()));
+        const known = splitAny($("knownIssuers").value).some(k => issuer.toLowerCase().includes(k.toLowerCase()));
         if(!known){
             out.push(`<span class="pill"><strong style="color:var(--warn)">unfamiliar-issuer</strong></span> TLS issuer not in known list.`);
         }
@@ -398,21 +403,6 @@ function fingerprintIndicators(r){
     return out;
 }
 
-// Shannon entropy of a string (for heuristic use only).
-function shannonEntropy(str){
-    const s = (str||"");
-    if(!s) return 0;
-    const freq = new Map();
-    for(const ch of s){
-        freq.set(ch, (freq.get(ch)||0)+1);
-    }
-    let ent = 0;
-    for(const [_, count] of freq){
-        const p = count / s.length;
-        ent -= p * Math.log2(p);
-    }
-    return ent;
-}
 function renderGroups(){
     const byVariant = {};
     const byTld = {};
