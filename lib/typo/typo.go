@@ -40,8 +40,6 @@ func Generate(domain string, cfg []strategy.Strategy, logger slog.Logger) ([]typ
 		}
 	}
 
-	// TODO: Issue #15 here the strategy name is preserved.
-	// On the return pass that through to the HTTPResult object for results storing
 	results, err := typogenerator.Fuzz(sld, cfg...)
 	if err != nil {
 		return results, err

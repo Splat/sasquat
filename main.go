@@ -16,9 +16,16 @@ import (
 	"time"
 )
 
+// candidate pairs a permutation with the strategy that generated it.
+type candidate struct {
+	Permutation  string
+	StrategyName string
+}
+
 // Output is the shape of what is returned to the results.json and thus site
 type Output struct {
 	Domain     string             `json:"domain"`
+	Strategy   string             `json:"strategy"`
 	Resolvable bool               `json:"resolvable"`
 	HasMail    bool               `json:"has_mail"`
 	DNS        verify.DNSResult   `json:"dns"`
@@ -90,7 +97,7 @@ func main() {
 
 	ctx := context.Background()
 
-	in := make(chan string)
+	in := make(chan candidate)
 	out := make(chan Output)
 
 	var wg sync.WaitGroup
@@ -98,19 +105,20 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for d := range in {
+			for c := range in {
 				for _, tld := range tldsOverride {
-					v, err := verify.VerifyDomain(ctx, d+"."+tld, vCfg)
+					v, err := verify.VerifyDomain(ctx, c.Permutation+"."+tld, vCfg)
 					if err != nil {
 						continue
 					}
-					// Simple triage: only emit domains that show signs of being “real”
+					// Simple triage: only emit domains that show signs of being "real"
 					if !v.Resolvable && !v.HasMail {
 						continue
 					}
 
 					out <- Output{
 						Domain:     v.ASCII,
+						Strategy:   c.StrategyName,
 						Resolvable: v.Resolvable,
 						HasMail:    v.HasMail,
 						DNS:        v.DNS,
@@ -125,7 +133,7 @@ func main() {
 	go func() {
 		for _, d := range candidates {
 			for _, p := range d.Permutations {
-				in <- p // the actual typo permutation
+				in <- candidate{Permutation: p, StrategyName: d.StrategyName}
 			}
 		}
 		close(in)
